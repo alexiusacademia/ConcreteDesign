@@ -1,11 +1,13 @@
 #---------------------------------------------------#
-#   rectangular_concrete.py                         #
+#   RectangularBeam.py                              #
 #   class for design of rectangular beam concrete   #
 #                                                   #
 #   This class is for the design of a rectangular   #
 #   reinforced concrete beam based on NSCP          #
 #   (National Structural Code of the Philippines)   #
 #---------------------------------------------------#
+
+import math
 
 # Constants
 PHI     = 0.90          # Reduction factor
@@ -40,6 +42,15 @@ class RectangularBeam:
 
     def setFactoredMoment(self, factoredMoment):
         self.factoredMoment             = factoredMoment
+
+    def setFactoredShear(self, factoredShear):
+        self.factoredShear              = factoredShear
+
+    def setConcreteWeightFactor(self, concreteWeightFactor):
+        self.concreteWeightFactor       = concreteWeightFactor
+
+    def setBeamReductionFactor(self, beamReductionFactor):
+        self.beamReductionFactor        = beamReductionFactor
 
     #-------------------#
     #       Getters     #
@@ -153,5 +164,100 @@ class RectangularBeam:
         strOutput += "Mu2\t= %0.3f kN-m\n" % (Mu2/1000000)
         strOutput += "As2\t= %0.2f sq.mm. (Compression steel) \n" % As2
         strOutput += "As = As1 + As2\t= %0.2f sq.mm. (Tension steel)" % As
+
+        return strOutput
+
+    def calculateShearReinforcement(self, base, depth, barDiam, legs):
+        """
+        :param factoredShear:
+        :param base:
+        :param depth:
+        :param barDiam:
+        :param legs:
+        :return:
+        """
+
+        fpc                 = self.concreteCompressiveStress
+        fy                  = self.steelYieldStrength
+        Y                   = self.concreteWeightFactor
+        phi                 = self.beamReductionFactor
+        strOutput           = ''
+
+        strOutput += 'Calculate shear strength provided by concrete:\n'
+        strOutput += ''
+
+        """ Area of stirrup """
+        self.Av     = math.pi / 4 * math.pow(barDiam, 2) * legs
+
+        self.Vu             = self.factoredShear * 1000                          # Factored shear force, Vu
+        self.Vc             = 0.17 * Y * math.sqrt(fpc) * base * depth      # Concrete shear strength, Vc
+        strOutput += 'Vc\t= ' + str(round((self.Vc/1000),2)) + ' kN\n'
+
+        # Test if shear reinforcement is required
+        if self.Vu > (phi * self.Vc):
+            # Stirrups are necessary
+            self.Vn         = self.Vu / phi
+            self.Vs         = self.Vn - self.Vc
+
+            strOutput += 'phi\t= ' + str(phi) + '\n'
+            strOutput += 'Vu > ' + str(phi) + 'Vc\n'
+            strOutput += 'Av\t= ' + str(round(self.Av, 2)) + '\n'
+
+            if self.Vs <= (0.66 * math.sqrt(fpc) * base * depth):
+
+                A           = 0.33 * math.sqrt(fpc) * base * depth
+
+                # Calculate spacing of stirrups
+                self.S      = self.Av * fy * depth / self.Vs
+                strOutput += 'Spacing\t= Av . fy . d / Vs\n'
+                strOutput += 'Spacing\t= ' + str(round(self.S, 2)) + '\n'
+
+                # Calculate maximum spacing
+                if self.Vs <= A:
+                    if (depth/2) > 600:
+                        self.maxSpacing = 600
+                    else:
+                        self.maxSpacing = depth/2
+                else:
+                    if (depth/4) > 300:
+                        self.maxSpacing = 300
+                    else:
+                        self.maxSpacing = depth/4
+                strOutput += 'Smax\t= ' + str(round(self.maxSpacing, 2)) + ' mm\n'
+
+                if self.S > self.maxSpacing:
+                    self.S = self.maxSpacing
+
+                strOutput += 'Adopt Spacing = ' + str(math.floor(self.S))
+
+
+            else:
+                # Adjust the size of the beam
+                print("Beam section needs to be adjusted.")
+                return 'Beam section needs to be adjusted!'
+
+        else:
+            if self.Vu > (0.5 * phi * self.Vc):
+                # Minimum area of stirrup
+                strOutput += 'Vu > 1/2 . phi . Vc\n'
+                strOutput += '\tProvide minimum reinforcement based on Av(min)'
+                s1  = self.Av * fy / (0.062 * math.sqrt(fpc) * base)
+                s2  = self.Av * fy / (0.35 * base)
+                s3  = depth/2
+
+                if s1 < s2:
+                    if s1 < s3:
+                        self.S = s1
+                    else:
+                        self.S = s3
+                else:
+                    if s2 < s3:
+                        self.S = s2
+                    else:
+                        self.S = s3
+
+                strOutput += 'Use spacing\t= ' + str(math.floor(self.S)) + ' mm'
+            else:
+                return "Stirrups are not required."
 
         return strOutput
